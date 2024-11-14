@@ -1,0 +1,133 @@
+name: "Deploy eosio.contracts Binaries"
+on:
+  workflow_dispatch:
+    inputs:
+      contracts:
+        description: Release version tag
+        required: true
+      eosio:
+        description: EOSIO release tag
+        required: true
+      cdt-tag:
+        description: CDT release tag
+        required: true
+      cdt-version:
+        description: CDT version where cdt being installed
+        required: false
+        default: 3.1.0
+jobs:
+  # Setup Main Dependencies Here
+  setup-dependencies:
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    name: "Build contracts"
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    container:
+      # This repository can be found / pushed to in: ultraio/eosio-docker-starter
+      image: quay.io/ultra.io/eosio-docker-starter:5.0.0
+      options: --cpus 2
+    steps:
+      - name: Get Token
+        id: application_token
+        uses: peter-murray/workflow-application-token-action@v2
+        with:
+          application_id: ${{ secrets.APPLICATION_ID }}
+          application_private_key: ${{ secrets.APPLICATION_PRIVATE_KEY }}
+
+      - name: "Set env vars"
+        run: |
+          echo "RELEASE_VERSION=${{ github.event.inputs.contracts }}" >> $GITHUB_ENV
+          echo "ULTRA_PATH=/__w/eos-evm-contract/eos-evm-contract/ultra/" >> $GITHUB_ENV
+
+      # Update dependencies
+      - name: 'Update dependencies'
+        run: |
+          apt-get update -y \
+          && apt-get install tree clang jq xxd -y
+
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+          ref: '${{ env.RELEASE_VERSION }}'
+
+      # Download the EOSIO.CDT Deb
+      - name: Download EOSIO.CDT Debian Image
+        uses: Legion2/download-release-action@v2.1.0
+        with:
+          repository: ultraio/eosio.cdt
+          tag: '${{ github.event.inputs.cdt-tag }}'
+          path: ./ultra
+          file:  eosio-cdt-${{ env.CDT_TAG }}.deb
+          token: '${{ steps.application_token.outputs.token }}'
+
+      # Install EOSIO.CDT Debian Image
+      - name: Install EOSIO.CDT Debian Image
+        run: apt install ./ultra/eosio-cdt-${{ env.CDT_TAG }}.deb -y
+
+      - name: Check EOSIO.CDT Install
+        run: cdt-cpp --version
+
+      # Download the EOSIO Deb
+      - name: Download EOSIO Debian Image
+        uses: Legion2/download-release-action@v2.1.0
+        with:
+          repository: ultraio/eosio
+          tag: '${{ github.event.inputs.eosio }}'
+          path: ./ultra
+          file:  eosio-${{ env.EOSIO_VERSION }}.deb
+          token: '${{ steps.application_token.outputs.token }}'
+
+      # Install EOSIO Debian Image
+      - name: Install EOSIO Debian Image
+        run: apt install ./ultra/eosio-${{ env.EOSIO_VERSION }}.deb -y
+
+      - name: Run nodeos
+        run: |
+          nodeos -e -p eosio \
+                    --plugin eosio::chain_api_plugin \
+                    --resource-monitor-not-shutdown-on-threshold-exceeded \
+                    --delete-all-blocks >> nodeos.log 2>&1 &
+          sleep 5
+          tail -20 ./nodeos.log
+
+      - name: Build EOS EVM Contract
+        run: .github/workflows/build-contract.sh
+        env:
+          DWITH_TEST_ACTIONS: true
+
+      # Build EOSIO.CONTRACTS Repository
+      # This one builds with the -g tag when it is present.
+      - name: Code Hash Generations
+        working-directory: ./
+        run: |
+          ./.github/workflows/generate_code_hash.sh
+          sed 's/^/* /;s/$//' ./build/evm_runtime/hash.txt >> ./CHANGELOG.txt
+          mv ./build/evm_runtime/hash.txt ./build/evm_runtime/eos-evm-contract-${{ env.RELEASE_VERSION }}-hash.txt
+
+      - name: ZIP Contracts and rename code hash
+        working-directory: ./build/evm_runtime
+        run: |
+          rm -rf ./CMakeFiles
+          find ../evm_runtime -type f \( -name \*\.abi -o -name \*\.wasm \) | xargs tar -rf eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
+          sha256sum ./eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz > eos-evm-contract-${{ env.RELEASE_VERSION }}-checksum.txt
+
+      # Create Release without -g used from build.sh
+      - name: Release without Code Hashes
+        uses: ultraio/action-gh-release@master
+        env:
+          GITHUB_TOKEN: ${{ steps.application_token.outputs.token }}
+        with:
+          name: Release ${{ env.RELEASE_VERSION }}
+          tag_name: ${{ env.RELEASE_VERSION }}
+          files: |
+            ./build/evm_runtime/eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
+            ./build/evm_runtime/contracts/*-checksum.txt
+            ./build/evm_runtime/contracts/*-hash.txt
+          body_path: ./CHANGELOG.txt
+          retries: 3
+          retry_interval: 1000
+          delete_on_existing: true
