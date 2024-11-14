@@ -97,6 +97,15 @@ jobs:
           sleep 5
           tail -20 ./nodeos.log
 
+      # Check if the hash generator is present in build script.
+      - name: Check if code hash generator is existed
+        working-directory: ./
+        id: main
+        continue-on-error: true
+        run: |
+            echo HAS_HASH_GENERATION=$(test -e ./.github/workflows/generate_code_hash.sh && echo 1 || echo 0) >> $GITHUB_ENV
+            echo ${{ env.HAS_HASH_GENERATION }}
+
       - name: Build EOS EVM Contract
         run: .github/workflows/build-contract.sh
         env:
@@ -105,6 +114,7 @@ jobs:
       # Build EOSIO.CONTRACTS Repository
       # This one builds with the -g tag when it is present.
       - name: Code Hash Generations
+        if: ${{ env.HAS_HASH_GENERATION == 1 }}
         working-directory: ./
         run: |
           ./.github/workflows/generate_code_hash.sh
@@ -118,9 +128,24 @@ jobs:
           find ../evm_runtime -type f \( -name \*\.abi -o -name \*\.wasm \) | xargs tar -rf eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
           sha256sum ./eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz > eos-evm-contract-${{ env.RELEASE_VERSION }}-checksum.txt
 
-      # Create Release without -g used from build.sh
+      - name: Release without Code Hashes
+        uses: ultraio/action-gh-release@master
+        if: ${{ env.HAS_HASH_GENERATION == 0 }}
+        env:
+          GITHUB_TOKEN: ${{ steps.application_token.outputs.token }}
+        with:
+          name: Release ${{ env.RELEASE_VERSION }}
+          tag_name: ${{ env.RELEASE_VERSION }}
+          files: |
+            ./build/evm_runtime/eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
+            ./build/evm_runtime/*-checksum.txt
+          retries: 3
+          retry_interval: 1000
+          delete_on_existing: true
+
       - name: Release with Code Hashes
         uses: ultraio/action-gh-release@master
+        if: ${{ env.HAS_HASH_GENERATION == 1 }}
         env:
           GITHUB_TOKEN: ${{ steps.application_token.outputs.token }}
         with:
