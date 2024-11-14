@@ -11,16 +11,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  start-runner:
+    name: Start Runner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Token
+        id: application_token
+        uses: peter-murray/workflow-application-token-action@v2
+        with:
+          application_id: ${{ secrets.APPLICATION_ID }}
+          application_private_key: ${{ secrets.APPLICATION_PRIVATE_KEY }}
+
+      - name: Trigger start-runner job
+        uses: convictional/trigger-workflow-and-wait@v1.6.5
+        with:
+          owner: ultraio
+          repo: blockchain-manager
+          github_token: ${{ steps.application_token.outputs.token }}
+          workflow_file_name: start-runner.yml
+  job-cleanup:
+    needs: start-runner
+    name: "Cleanup"
+    timeout-minutes: 5
+    runs-on: "self-hosted"
+    steps:
+      - name: "Cleanup Previous Run"
+        run: |
+          sudo rm -rf ./* || true
+          sudo rm -rf ./.??* || true
+          sudo rm -rf $GITHUB_WORKSPACE || true
+          mkdir $GITHUB_WORKSPACE
   build-contracts:
     name: "Build contracts and run tests"
     timeout-minutes: 10
-    runs-on: ubuntu-latest
+    runs-on: "self-hosted"
     container:
       # This repository can be found / pushed to in: ultraio/eosio-docker-starter
       image: quay.io/ultra.io/eosio-docker-starter:5.0.0
       options: >-
         --init
-        --cpus 2
+        --cpus 8
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -34,6 +64,7 @@ jobs:
 
       - name: "Set env vars"
         run: |
+          echo "JOBS=8" >> $GITHUB_ENV
           echo "ULTRA_PATH=/__w/eos-evm-contract/eos-evm-contract/ultra/" >> $GITHUB_ENV
 
       # Update dependencies
@@ -66,16 +97,16 @@ jobs:
         env:
           DWITH_TEST_ACTIONS: true
 
-      # Clone `eosio.contracts` repo
+      # Clone eosio.contracts repository
       - uses: actions/checkout@v3
-        name: "Clone eosio.contracts"
+        name: 'Clone eosio.contracts'
         with:
           repository: 'ultraio/eosio.contracts'
           token: '${{ steps.application_token.outputs.token }}'
           path: './ultra/eosio.contracts'
           submodules: 'recursive'
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: 'master'
 
       # Download latest `eosio.contracts` release
       - uses: robinraju/release-downloader@v1.8
