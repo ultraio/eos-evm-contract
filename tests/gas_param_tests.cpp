@@ -63,6 +63,18 @@ BOOST_FIXTURE_TEST_CASE(basic, gas_param_evm_tester) try {
         eosio_assert_message_exception,
         eosio_assert_message_is("evm_version must >= 1"));
 
+    // zero gas price
+    BOOST_REQUIRE_EXCEPTION(
+        updtgasparam(asset(10'0000, native_symbol), 0, evm_account_name),
+        eosio_assert_message_exception,
+        eosio_assert_message_is("zero gas price is not allowed"));
+    
+     // fee too high
+    BOOST_REQUIRE_EXCEPTION(
+        updtgasparam(asset((1ull << 62) - 1, native_symbol), 1'000'000'000, evm_account_name),
+        eosio_assert_message_exception,
+        eosio_assert_message_is("gas_per_byte too big"));
+
     setversion(1, evm_account_name);
 
     produce_block();
@@ -87,12 +99,6 @@ BOOST_FIXTURE_TEST_CASE(basic, gas_param_evm_tester) try {
         BOOST_ASSERT(trace->action_traces.size() >= 2 && trace->action_traces[0].act.name == "pushtx"_n);
         BOOST_ASSERT(trace->action_traces.size() >= 2 && trace->action_traces[1].act.name == "evmtx"_n);
     }
-
-    // require miniumum gas at least 1 gwei
-    BOOST_REQUIRE_EXCEPTION(
-        updtgasparam(asset(10'0000, native_symbol), 999'999'999, evm_account_name),
-        eosio_assert_message_exception,
-        eosio_assert_message_is("gas_price must >= 1Gwei"));
 
     // invalid symbol in ram_price_mb paramerter
     BOOST_REQUIRE_EXCEPTION(
@@ -186,6 +192,38 @@ BOOST_FIXTURE_TEST_CASE(basic, gas_param_evm_tester) try {
         BOOST_ASSERT(trace->action_traces.size() >= 2 && trace->action_traces[0].act.name == "pushtx"_n);
         BOOST_ASSERT(trace->action_traces.size() >= 2 && trace->action_traces[1].act.name == "evmtx"_n);
     }
+
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(gas_param_traces, gas_param_evm_tester) try {
+
+    init();
+
+    setversion(3, evm_account_name);
+    produce_blocks(2);
+
+    setgasparam(1, 2, 3, 4, 2900, evm_account_name);
+    produce_blocks(3);
+
+    evm_eoa evm1;
+    auto trace = transfer_token("alice"_n, evm_account_name, make_asset(1), evm1.address_0x());
+
+    BOOST_REQUIRE_EQUAL(trace->action_traces.size(), 5);
+    BOOST_ASSERT(trace->action_traces[0].act.name == "transfer"_n);
+    BOOST_ASSERT(trace->action_traces[1].act.name == "transfer"_n);
+    BOOST_ASSERT(trace->action_traces[2].act.name == "transfer"_n);
+    BOOST_ASSERT(trace->action_traces[3].act.name == "configchange"_n);
+    BOOST_ASSERT(trace->action_traces[4].act.name == "evmtx"_n);
+
+    auto cp = fc::raw::unpack<consensus_parameter_data_type>(trace->action_traces[3].act.data);
+
+    std::visit([&](auto& v){
+        BOOST_REQUIRE_EQUAL(v.gas_parameter.gas_txnewaccount, 1);
+        BOOST_REQUIRE_EQUAL(v.gas_parameter.gas_newaccount, 2);
+        BOOST_REQUIRE_EQUAL(v.gas_parameter.gas_txcreate, 3);
+        BOOST_REQUIRE_EQUAL(v.gas_parameter.gas_codedeposit, 4);
+        BOOST_REQUIRE_EQUAL(v.gas_parameter.gas_sset, 2900);
+    }, cp);
 
 } FC_LOG_AND_RETHROW()
 
@@ -466,6 +504,41 @@ BOOST_FIXTURE_TEST_CASE(gas_param_G_sset, gas_param_evm_tester) try {
     auto gas_used2 = set_value(evm1, intx::uint256{4});
 
     BOOST_REQUIRE(gas_used1 + 1 == gas_used2);
+
+} FC_LOG_AND_RETHROW()
+
+BOOST_FIXTURE_TEST_CASE(gas_limit_internal_transaction, gas_param_evm_tester) try {
+
+    uint64_t suggested_gas_price = 150'000'000'000ull;
+    init(15555, suggested_gas_price);
+
+    produce_block();
+    fund_evm_faucet();
+    produce_block();
+
+    setversion(1, evm_account_name);
+    produce_block();
+    produce_block();
+
+    // Send 0.0001 EOS to a never used address (21000 GAS)
+    evm_eoa evm1;
+    auto trace = transfer_token("alice"_n, "evm"_n, make_asset(1), evm1.address_0x());
+    auto tx = get_tx_from_trace(trace->action_traces[3].act.data);
+    BOOST_REQUIRE(tx.gas_limit == 21000);
+    BOOST_REQUIRE(evm_balance(evm1) == 100000000000000);
+
+    // Set gas_txnewaccount = 1
+    setgasparam(1, gas_newaccount, gas_txcreate, gas_codedeposit, gas_sset, evm_account_name);
+    produce_block();
+    produce_block();
+    produce_block();
+
+    // Send 0.0001 EOS to a never used address (21001 GAS)
+    evm_eoa evm2;
+    trace = transfer_token("alice"_n, "evm"_n, make_asset(1), evm2.address_0x());
+    tx = get_tx_from_trace(trace->action_traces[4].act.data);
+    BOOST_REQUIRE(tx.gas_limit == 21001);
+    BOOST_REQUIRE(evm_balance(evm2) == 100000000000000);
 
 } FC_LOG_AND_RETHROW()
 

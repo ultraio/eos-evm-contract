@@ -1,9 +1,9 @@
 #pragma once
-#include <eosio/eosio.hpp>
+
+#include <evm_runtime/tables.hpp>
 #include <eosio/asset.hpp>
 #include <eosio/time.hpp>
 #include <eosio/singleton.hpp>
-#include <evm_runtime/tables.hpp>
 namespace evm_runtime {
 
 struct fee_parameters;
@@ -27,10 +27,19 @@ struct config_wrapper {
     const eosio::asset& get_ingress_bridge_fee()const;
     void set_ingress_bridge_fee(const eosio::asset& ingress_bridge_fee);
 
+    gas_prices_type get_gas_prices()const;
+    void set_gas_prices(const gas_prices_type& price);
+
     uint64_t get_gas_price()const;
     void set_gas_price(uint64_t gas_price);
 
+    template <typename Q, typename Func>
+    void enqueue(Func&& update_fnc);
     void enqueue_gas_price(uint64_t gas_price);
+    void enqueue_gas_prices(const gas_prices_type& prices);
+
+    template <typename Q, typename Func>
+    void process_queue(Func&& update_func);
     void process_price_queue();
 
     uint32_t get_miner_cut()const;
@@ -49,8 +58,8 @@ struct config_wrapper {
     void update_consensus_parameters(eosio::asset ram_price_mb, uint64_t gas_price);
     void update_consensus_parameters2(std::optional<uint64_t> gas_txnewaccount, std::optional<uint64_t> gas_newaccount, std::optional<uint64_t> gas_txcreate, std::optional<uint64_t> gas_codedeposit, std::optional<uint64_t> gas_sset);
 
-    const consensus_parameter_data_type& get_consensus_param();
-    std::pair<const consensus_parameter_data_type &, bool> get_consensus_param_and_maybe_promote();
+    consensus_parameter_data_type get_consensus_param();
+    std::pair<consensus_parameter_data_type, bool> get_consensus_param_and_maybe_promote();
 
     void set_token_contract(eosio::name token_contract); // only set during init
     eosio::name get_token_contract() const;
@@ -65,6 +74,7 @@ private:
     void clear_dirty();
 
     eosio::time_point get_current_time()const;
+    bool check_gas_overflow(uint64_t gas_txcreate, uint64_t gas_codedeposit) const; // return true if pass
 
     bool _dirty  = false;
     bool _exists = false;

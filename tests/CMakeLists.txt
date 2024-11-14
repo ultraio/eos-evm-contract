@@ -1,5 +1,5 @@
-project(evm_runtime_tests)
 cmake_minimum_required(VERSION 3.12)
+project(evm_runtime_tests)
 
 find_package(eosio)
 
@@ -22,6 +22,8 @@ include_directories(
 )
 
 add_eosio_test_executable( unit_test
+    ${CMAKE_SOURCE_DIR}/rlp_encoding_tests.cpp
+    ${CMAKE_SOURCE_DIR}/different_gas_token_tests.cpp
     ${CMAKE_SOURCE_DIR}/version_tests.cpp
     ${CMAKE_SOURCE_DIR}/account_id_tests.cpp
     ${CMAKE_SOURCE_DIR}/basic_evm_tester.cpp
@@ -37,6 +39,7 @@ add_eosio_test_executable( unit_test
     ${CMAKE_SOURCE_DIR}/chainid_tests.cpp
     ${CMAKE_SOURCE_DIR}/bridge_message_tests.cpp
     ${CMAKE_SOURCE_DIR}/admin_actions_tests.cpp
+    ${CMAKE_SOURCE_DIR}/stack_limit_tests.cpp
     ${CMAKE_SOURCE_DIR}/main.cpp
     ${CMAKE_SOURCE_DIR}/../silkworm/silkworm/core/rlp/encode.cpp
     ${CMAKE_SOURCE_DIR}/../silkworm/silkworm/core/rlp/decode.cpp

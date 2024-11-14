@@ -43,12 +43,14 @@ jobs:
         with:
           owner: AntelopeIO
           repo: cdt
-          target: 'v3.1.0'
+          target: 'v4.0.1'
           prereleases: false
           file: 'cdt_.*amd64.deb'
 
       - name: Install CDT
-        run: sudo apt-get install -y ./cdt*.deb
+        run: |
+          sudo apt-get update && sudo apt-get upgrade -y
+          sudo apt-get install -y ./cdt*.deb
 
       - name: Build EOS EVM Contract
         run: .github/workflows/build-contract.sh
@@ -56,31 +58,32 @@ jobs:
           DWITH_TEST_ACTIONS: ${{ matrix.DWITH_TEST_ACTIONS }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: contract.test-actions-${{ matrix.DWITH_TEST_ACTIONS }}.tar.gz
           path: contract.tar.gz
           if-no-files-found: error
 
-      - name: Download Leap - dev binary
+      - name: Download antelope-spring-dev
         uses: AntelopeIO/asset-artifact-download-action@v3
         with:
           owner: AntelopeIO
-          repo: leap
-          target: '^5.0.1'
+          repo: spring
+          file: 'antelope-spring-dev.*ubuntu22\.04_amd64.deb'
+          target: 'main'
           prereleases: false
-          file: 'leap-dev.*ubuntu22\.04_amd64.deb'
-          container-package: experimental-binaries
-          artifact-name: leap-dev-ubuntu22-amd64
+          artifact-name: antelope-spring-dev-ubuntu22-amd64
+          container-package: antelope-spring-experimental-binaries
 
-      - name: Install Leap
-        run: sudo apt-get install -y ./leap*.deb
+      - name: Install packages
+        run: sudo apt-get install -y ./*.deb
 
       - name: Build EOS EVM Contract Tests
         run: .github/workflows/build-contract-test.sh
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        if: ${{ matrix.DWITH_TEST_ACTIONS == 'on' }}
+        uses: actions/upload-artifact@v4
         with:
           name: contract-test.tar.gz
           path: contract-test.tar.gz
@@ -92,8 +95,8 @@ jobs:
           DWITH_TEST_ACTIONS: ${{ matrix.DWITH_TEST_ACTIONS }}
 
       - name: Upload Test Metrics
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: test-results.xml
+          name: test-results-test-actions-${{ matrix.DWITH_TEST_ACTIONS }}.xml
           path: test-results.xml
           if-no-files-found: error

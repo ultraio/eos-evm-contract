@@ -103,6 +103,12 @@ namespace fc { namespace raw {
          fc::raw::unpack(ds, queue_front_block);
          tmp.queue_front_block.emplace(queue_front_block);
       }
+      if(ds.remaining()) {
+         evm_test::gas_prices_type prices;
+         fc::raw::unpack(ds, prices);
+         tmp.gas_prices.emplace(prices);
+      }
+
     } FC_RETHROW_EXCEPTIONS(warn, "error unpacking partial_account_table_row") }
 }}
 
@@ -233,10 +239,10 @@ basic_evm_tester::basic_evm_tester(std::string native_symbol_str) :
 
 asset basic_evm_tester::make_asset(int64_t amount) const { return asset(amount, native_symbol); }
 
-transaction_trace_ptr basic_evm_tester::transfer_token(name from, name to, asset quantity, std::string memo)
+transaction_trace_ptr basic_evm_tester::transfer_token(name from, name to, asset quantity, std::string memo, name acct)
 {
    return push_action(
-      token_account_name, "transfer"_n, from, mvo()("from", from)("to", to)("quantity", quantity)("memo", memo));
+      acct, "transfer"_n, from, mvo()("from", from)("to", to)("quantity", quantity)("memo", memo));
 }
 
 action basic_evm_tester::get_action( account_name code, action_name acttype, vector<permission_level> auths,
@@ -281,7 +287,8 @@ void basic_evm_tester::init(const uint64_t chainid,
                             const uint64_t gas_price,
                             const uint32_t miner_cut,
                             const std::optional<asset> ingress_bridge_fee,
-                            const bool also_prepare_self_balance)
+                            const bool also_prepare_self_balance,
+                            const std::optional<name> token_contract)
 {
    mvo fee_params;
    fee_params("gas_price", gas_price)("miner_cut", miner_cut);
@@ -292,7 +299,12 @@ void basic_evm_tester::init(const uint64_t chainid,
       fee_params("ingress_bridge_fee", "0.0000 EOS");
    }
 
-   push_action(evm_account_name, "init"_n, evm_account_name, mvo()("chainid", chainid)("fee_params", fee_params));
+   if(!token_contract.has_value()) {
+      push_action(evm_account_name, "init"_n, evm_account_name, mvo()("chainid", chainid)("fee_params", fee_params));
+   } else {
+      push_action(evm_account_name, "init"_n, evm_account_name, mvo()("chainid", chainid)("fee_params", fee_params)("token_contract", token_contract));
+   }
+
 
    if (also_prepare_self_balance) {
       prepare_self_balance();
@@ -311,6 +323,7 @@ config_table_row basic_evm_tester::get_config() const
    static constexpr eosio::chain::name config_singleton_name = "config"_n;
    const vector<char> d =
       get_row_by_account(evm_account_name, evm_account_name, config_singleton_name, config_singleton_name);
+
    return fc::raw::unpack<config_table_row>(d);
 }
 
@@ -434,7 +447,7 @@ transaction_trace_ptr basic_evm_tester::assertnonce(name account, uint64_t next_
 transaction_trace_ptr basic_evm_tester::pushtx(const silkworm::Transaction& trx, name miner, std::optional<uint64_t> min_inclusion_price)
 {
    silkworm::Bytes rlp;
-   silkworm::rlp::encode(rlp, trx);
+   silkworm::rlp::encode(rlp, trx, false);
 
    bytes rlp_bytes;
    rlp_bytes.resize(rlp.size());
@@ -500,6 +513,11 @@ transaction_trace_ptr basic_evm_tester::addopenbal(name account, const intx::uin
    auto d = to_bytes(delta);
    return basic_evm_tester::push_action(evm_account_name, "addopenbal"_n, actor,
       mvo()("account", account)("delta",d)("subtract",subtract));
+}
+
+transaction_trace_ptr basic_evm_tester::setgasprices(const gas_prices_type& prices, name actor) {
+   return basic_evm_tester::push_action(evm_account_name, "setgasprices"_n, actor,
+      mvo()("prices", prices));
 }
 
 evmc::address basic_evm_tester::deploy_contract(evm_eoa& eoa, evmc::bytes bytecode)
@@ -772,6 +790,17 @@ bool basic_evm_tester::scan_price_queue(std::function<bool(price_queue)> visitor
    return true;
 }
 
+bool basic_evm_tester::scan_prices_queue(std::function<bool(prices_queue)> visitor) const
+{
+   static constexpr eosio::chain::name prices_queue_table_name = "pricesqueue"_n;
+
+   scan_table<prices_queue>(
+      prices_queue_table_name, evm_account_name, [&visitor](prices_queue&& row) { return visitor(row); }
+   );
+
+   return true;
+}
+
 asset basic_evm_tester::get_eos_balance( const account_name& act ) {
    vector<char> data = get_row_by_account( "eosio.token"_n, act, "accounts"_n, name(native_symbol.to_symbol_code().value) );
    return data.empty() ? asset(0, native_symbol) : fc::raw::unpack<asset>(data);
@@ -802,5 +831,18 @@ void basic_evm_tester::check_balances() {
       throw std::runtime_error("evm_eos_balance != total_in_accounts+total_in_evm_accounts");
    }
 }
+
+silkworm::Transaction basic_evm_tester::get_tx_from_trace(const bytes& v) {
+   auto evmtx = get_event_from_trace<evm_test::evmtx_v1>(v);
+   BOOST_REQUIRE(evmtx.eos_evm_version == 1);
+
+   silkworm::Transaction tx;
+   silkworm::ByteView bv{(const uint8_t*)evmtx.rlptx.data(), evmtx.rlptx.size()};
+   silkworm::rlp::decode(bv, tx);
+   BOOST_REQUIRE(bv.empty());
+
+   return tx;
+};
+
 
 } // namespace evm_test

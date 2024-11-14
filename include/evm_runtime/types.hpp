@@ -16,11 +16,7 @@ namespace evm_runtime {
    static constexpr uint64_t gas_sset_min = 2900;
    static constexpr uint64_t grace_period_seconds = 180;
 
-   constexpr uint64_t pow10_const(int v) {
-      uint64_t r = 1;
-      while (v-- > 0) r *= 10;
-      return r;
-   }
+   uint64_t pow10_const(int v);
 
    constexpr unsigned evm_precision = 18;
    constexpr eosio::name default_token_account = "eosio.token"_n;
@@ -82,15 +78,24 @@ namespace evm_runtime {
 
    using bridge_message = std::variant<bridge_message_v0>;
 
-   struct evmtx_v0 {
+   struct evmtx_base {
       uint64_t  eos_evm_version;
       bytes     rlptx;
-      uint64_t  base_fee_per_gas;
-      
-      EOSLIB_SERIALIZE(evmtx_v0, (eos_evm_version)(rlptx)(base_fee_per_gas));
+      EOSLIB_SERIALIZE(evmtx_base, (eos_evm_version)(rlptx));
    };
 
-   using evmtx_type = std::variant<evmtx_v0>;
+   struct evmtx_v1 : evmtx_base {
+      uint64_t  base_fee_per_gas;
+      EOSLIB_SERIALIZE_DERIVED(evmtx_v1, evmtx_base, (base_fee_per_gas));
+   };
+
+   struct evmtx_v3 : evmtx_base {
+      uint64_t overhead_price;
+      uint64_t storage_price;
+      EOSLIB_SERIALIZE_DERIVED(evmtx_v3, evmtx_base, (overhead_price)(storage_price));
+   };
+
+   using evmtx_type = std::variant<evmtx_v1, evmtx_v3>;
 
    struct fee_parameters
    {
