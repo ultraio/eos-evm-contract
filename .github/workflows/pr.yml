@@ -118,11 +118,8 @@ jobs:
 
       - name: Extract eosio.contracts.tar.gz
         run: |
-          ls -l
-          ls -l ./ultra/eosio.contracts
           mkdir -p ./ultra/eosio.contracts/build
           tar -xf ./ultra/eosio.contracts/eosio-contracts-*.tar.gz -C ./ultra/eosio.contracts/build
-          ls -l ./ultra/eosio.contracts/build
 
       # Download latest eosio
       - name: Download latest eosio
@@ -133,12 +130,13 @@ jobs:
             # match eosio-***.deb
             # don't match eosio-***-ubuntu20.deb
             file: eosio-.*\.deb(?<!ubuntu20\.deb)$
-            target: "./ultra/eosio.deb"
             token: '${{ steps.application_token.outputs.token }}'
 
       # Install EOSIO Debian Image
       - name: Install EOSIO Debian Image
-        run: dpkg -i ./ultra/eosio.deb
+        run: |
+          ls -l
+          dpkg -i ./eosio*.deb
       
       - uses: actions/setup-node@v3
         with:
@@ -171,6 +169,6 @@ jobs:
 
       - name: Run eosio.contracts ultratests2
         if: always() && !cancelled()
-        working-directory: ./
+        working-directory: ./ultratests
         shell: bash
         run: ultratest2 --contracts-dir-path=$ULTRA_PATH/eosio.contracts/build/contracts
