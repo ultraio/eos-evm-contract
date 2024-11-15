@@ -133,6 +133,7 @@ jobs:
           rm -rf ./CMakeFiles
           find ../evm_runtime -type f \( -name \*\.abi -o -name \*\.wasm \) | xargs tar -rf eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
           sha256sum ./eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz > eos-evm-contract-${{ env.RELEASE_VERSION }}-checksum.txt
+          mv ./contract.tar.gz ./build.tar.gz
 
       - name: Release with Code Hashes
         uses: ultraio/action-gh-release@master
@@ -145,6 +146,7 @@ jobs:
             ./build/evm_runtime/eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
             ./build/evm_runtime/*-checksum.txt
             ./build/evm_runtime/*-hash.txt
+            ./build.tar.gz
           body_path: ./CHANGELOG.txt
           retries: 3
           retry_interval: 1000
