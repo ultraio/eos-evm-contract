@@ -1,4 +1,4 @@
-name: "Deploy eosio.contracts Binaries"
+name: "Release EVM contract"
 on:
   workflow_dispatch:
     inputs:
@@ -38,7 +38,10 @@ jobs:
 
       - name: "Set env vars"
         run: |
+          echo "EOSIO_VERSION=${{ github.event.inputs.eosio }}" >> $GITHUB_ENV
           echo "RELEASE_VERSION=${{ github.event.inputs.contracts }}" >> $GITHUB_ENV
+          echo "CDT_TAG=${{ github.event.inputs.cdt-tag }}" >> $GITHUB_ENV
+          echo "CDT_VERSION=${{ github.event.inputs.cdt-tag }}" >> $GITHUB_ENV
           echo "ULTRA_PATH=/__w/eos-evm-contract/eos-evm-contract/ultra/" >> $GITHUB_ENV
 
       # Update dependencies
@@ -94,10 +97,26 @@ jobs:
           sleep 5
           tail -20 ./nodeos.log
 
+      # Check if the hash generator is present in build script.
+      - name: Check if code hash generator is existed
+        working-directory: ./
+        id: main
+        continue-on-error: true
+        run: |
+            echo HAS_HASH_GENERATION=$(test -e ./.github/workflows/generate_code_hash.sh && echo 1 || echo 0) >> $GITHUB_ENV
+            echo ${{ env.HAS_HASH_GENERATION }}
+
+      - name: Download hash generation script if it is missing
+        if: ${{ env.HAS_HASH_GENERATION == 0 }}
+        working-directory: ./
+        run: |
+          wget 'https://raw.githubusercontent.com/ultraio/eos-evm-contract/refs/heads/feature/BLOCK-2590-deploy-evm-contract/.github/workflows/generate_code_hash.sh' -O ./.github/workflows/generate_code_hash.sh
+          chmod +x ./.github/workflows/generate_code_hash.sh
+
       - name: Build EOS EVM Contract
         run: .github/workflows/build-contract.sh
         env:
-          DWITH_TEST_ACTIONS: true
+          DWITH_TEST_ACTIONS: false
 
       # Build EOSIO.CONTRACTS Repository
       # This one builds with the -g tag when it is present.
@@ -115,8 +134,12 @@ jobs:
           find ../evm_runtime -type f \( -name \*\.abi -o -name \*\.wasm \) | xargs tar -rf eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
           sha256sum ./eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz > eos-evm-contract-${{ env.RELEASE_VERSION }}-checksum.txt
 
-      # Create Release without -g used from build.sh
-      - name: Release without Code Hashes
+      - name: Rename build directory archive
+        run: |
+          ls -l
+          mv ./contract.tar.gz ./build.tar.gz
+
+      - name: Release with Code Hashes
         uses: ultraio/action-gh-release@master
         env:
           GITHUB_TOKEN: ${{ steps.application_token.outputs.token }}
@@ -125,8 +148,9 @@ jobs:
           tag_name: ${{ env.RELEASE_VERSION }}
           files: |
             ./build/evm_runtime/eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
-            ./build/evm_runtime/contracts/*-checksum.txt
-            ./build/evm_runtime/contracts/*-hash.txt
+            ./build/evm_runtime/*-checksum.txt
+            ./build/evm_runtime/*-hash.txt
+            ./build.tar.gz
           body_path: ./CHANGELOG.txt
           retries: 3
           retry_interval: 1000
