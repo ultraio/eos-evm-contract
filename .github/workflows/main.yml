@@ -109,7 +109,9 @@ jobs:
       - name: Download hash generation script if it is missing
         if: ${{ env.HAS_HASH_GENERATION == 0 }}
         working-directory: ./
-        run: wget 'https://raw.githubusercontent.com/ultraio/eos-evm-contract/refs/heads/feature/BLOCK-2590-deploy-evm-contract/.github/workflows/generate_code_hash.sh' -O ./.github/workflows/generate_code_hash.sh
+        run: |
+          wget 'https://raw.githubusercontent.com/ultraio/evm-bridge-contracts/refs/heads/feature/BLOCK-2590-deploy-evm-contract/.github/workflows/generate_code_hash.sh' -O ./.github/workflows/generate_code_hash.sh
+          chmod +x ./.github/workflows/generate_code_hash.sh
 
       - name: Build EOS EVM Contract
         run: .github/workflows/build-contract.sh
