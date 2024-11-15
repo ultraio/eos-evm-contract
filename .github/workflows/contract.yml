@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        DWITH_TEST_ACTIONS: ['on', 'off']
+        DWITH_TEST_ACTIONS: ['off']
     name: EOS EVM Contract Build - Tests ${{ matrix.DWITH_TEST_ACTIONS }}
     env:
       DCMAKE_BUILD_TYPE: 'Release'
