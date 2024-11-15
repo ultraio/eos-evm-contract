@@ -34,19 +34,11 @@ jobs:
       DCMAKE_BUILD_TYPE: 'Release'
 
     steps:
-      - name: Authenticate
-        id: auth
-        uses: AntelopeIO/github-app-token-action@v1
-        with:
-          app_id: ${{ secrets.TRUSTEVM_CI_APP_ID }}
-          private_key: ${{ secrets.TRUSTEVM_CI_APP_KEY }}
-
       - name: Checkout Repo
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           submodules: 'recursive'
-          token: ${{ steps.auth.outputs.token }}
 
       - name: Download CDT
         uses: AntelopeIO/asset-artifact-download-action@v2
