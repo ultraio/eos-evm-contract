@@ -133,6 +133,10 @@ jobs:
           rm -rf ./CMakeFiles
           find ../evm_runtime -type f \( -name \*\.abi -o -name \*\.wasm \) | xargs tar -rf eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz
           sha256sum ./eos-evm-contract-${{ env.RELEASE_VERSION }}.tar.gz > eos-evm-contract-${{ env.RELEASE_VERSION }}-checksum.txt
+
+      - name: Rename build directory archive
+        run: |
+          ls -l
           mv ./contract.tar.gz ./build.tar.gz
 
       - name: Release with Code Hashes
